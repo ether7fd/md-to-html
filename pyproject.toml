@@ -1,0 +1,11 @@
+[project]
+name = "md-to-html"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "markdown>=3.5",
+    "pygments>=2.17",
+    "pyyaml>=6.0",
+]
