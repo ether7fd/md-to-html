@@ -181,9 +181,6 @@ body {
   font-size: 9px;
   transition: transform 0.15s;
 }
-.folder-arrow::before {
-  content: "▶";
-}
 .folder-arrow.open { transform: rotate(90deg); }
 .nav-folder-children { padding-left: 10px; }
 
