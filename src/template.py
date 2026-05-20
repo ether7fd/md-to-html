@@ -2,15 +2,15 @@
 HTML template generator.
 Produces a single self-contained HTML file with all CSS and JS embedded.
 """
-from __future__ import annotations
 
-from pathlib import Path
+from __future__ import annotations
 
 from pygments.formatters import HtmlFormatter
 
 # ---------------------------------------------------------------------------
 # Pygments syntax-highlight CSS (dark: dracula, light: friendly)
 # ---------------------------------------------------------------------------
+
 
 def _pygments_css() -> str:
     dark = HtmlFormatter(style="dracula").get_style_defs(".codehilite")
@@ -176,7 +176,14 @@ body {
   user-select: none;
 }
 .nav-folder-title:hover { background: var(--surface); color: var(--text); }
-.folder-arrow { font-size: 9px; transition: transform 0.15s; }
+.folder-arrow {
+  display: inline-block;
+  font-size: 9px;
+  transition: transform 0.15s;
+}
+.folder-arrow::before {
+  content: "▶";
+}
 .folder-arrow.open { transform: rotate(90deg); }
 .nav-folder-children { padding-left: 10px; }
 
@@ -400,93 +407,112 @@ img, .ob-embed-img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; }
 # ---------------------------------------------------------------------------
 
 _JS = """
+// ── グローバル関数の定義（HTMLのonclick属性などから呼ばれるもの） ──
+
+function handleRouting() {
+  var hash = decodeURIComponent(location.hash.slice(1));
+  showPage(hash || FIRST_SLUG);
+}
+
+function showPage(slug) {
+  document.querySelectorAll('.page').forEach(function (p) {
+    p.classList.remove('active');
+  });
+  var page = document.getElementById(slug);
+  if (page) {
+    page.classList.add('active');
+    document.querySelectorAll('.nav-link').forEach(function (a) {
+      var href = decodeURIComponent((a.getAttribute('href') || '').slice(1));
+      a.classList.toggle('active', href === slug);
+    });
+    var vaultName = document.querySelector('.vault-name').textContent;
+    document.title = (page.dataset.title || slug) + ' \u2013 ' + vaultName;
+    var content = document.getElementById('content');
+    if (content) content.scrollTop = 0;
+  } else if (typeof FIRST_SLUG !== 'undefined' && slug !== FIRST_SLUG) {
+    showPage(FIRST_SLUG);
+  }
+}
+
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme');
+  var next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('ob-theme', next); } catch(e) {}
+  updateThemeBtn(next);
+}
+
+function updateThemeBtn(theme) {
+  var btn = document.querySelector('.theme-btn');
+  if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\U0001f319';
+}
+
+function filterPages(query) {
+  var q = query.toLowerCase().trim();
+  document.querySelectorAll('.nav-item').forEach(function (item) {
+    var link = item.querySelector('.nav-link');
+    var match = !q || link.textContent.toLowerCase().includes(q);
+    item.style.display = match ? '' : 'none';
+  });
+  document.querySelectorAll('.nav-folder').forEach(function (folder) {
+    if (!q) { folder.style.display = ''; return; }
+    var hasVisible = Array.from(folder.querySelectorAll('.nav-item'))
+      .some(function (i) { return i.style.display !== 'none'; });
+    folder.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+  document.getElementById('content').classList.toggle('expanded');
+}
+
+function toggleFolder(el) {
+  var children = el.nextElementSibling;
+  if (children) {
+    children.style.display = children.style.display === 'none' ? '' : 'none';
+  }
+  var arrow = el.querySelector('.folder-arrow');
+  if (arrow) arrow.classList.toggle('open');
+}
+
+
+// ── 初期化処理（DOM読み込み時やハッシュ変更時に実行） ──
+
 (function () {
   'use strict';
 
-  // Restore theme before first paint
-  var saved = localStorage.getItem('ob-theme') || 'dark';
+  // localStorageエラーを回避してテーマを復元
+  var saved = 'dark';
+  try {
+    saved = localStorage.getItem('ob-theme') || 'dark';
+  } catch (e) {
+    console.warn('localStorage is not available. Using default theme.');
+  }
   document.documentElement.setAttribute('data-theme', saved);
   updateThemeBtn(saved);
 
-  document.addEventListener('DOMContentLoaded', function () {
-    navigate();
-    // Open all folders by default
+  // 初期描画関数
+  function init() {
+    handleRouting();
+    // デフォルトで全てのフォルダを開く
     document.querySelectorAll('.nav-folder-children').forEach(function (el) {
       el.style.display = '';
     });
     document.querySelectorAll('.folder-arrow').forEach(function (el) {
       el.classList.add('open');
     });
-  });
-
-  window.addEventListener('hashchange', navigate);
-
-  window.navigate = function () {
-    var hash = decodeURIComponent(location.hash.slice(1));
-    showPage(hash || FIRST_SLUG);
-  };
-
-  window.showPage = function (slug) {
-    document.querySelectorAll('.page').forEach(function (p) {
-      p.classList.remove('active');
-    });
-    var page = document.getElementById(slug);
-    if (page) {
-      page.classList.add('active');
-      document.querySelectorAll('.nav-link').forEach(function (a) {
-        var href = decodeURIComponent((a.getAttribute('href') || '').slice(1));
-        a.classList.toggle('active', href === slug);
-      });
-      var vaultName = document.querySelector('.vault-name').textContent;
-      document.title = (page.dataset.title || slug) + ' \u2013 ' + vaultName;
-      var content = document.getElementById('content');
-      if (content) content.scrollTop = 0;
-    } else if (FIRST_SLUG) {
-      showPage(FIRST_SLUG);
-    }
-  };
-
-  window.toggleTheme = function () {
-    var current = document.documentElement.getAttribute('data-theme');
-    var next = current === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('ob-theme', next);
-    updateThemeBtn(next);
-  };
-
-  function updateThemeBtn(theme) {
-    var btn = document.querySelector('.theme-btn');
-    if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\U0001F319';
   }
 
-  window.filterPages = function (query) {
-    var q = query.toLowerCase().trim();
-    document.querySelectorAll('.nav-item').forEach(function (item) {
-      var link = item.querySelector('.nav-link');
-      var match = !q || link.textContent.toLowerCase().includes(q);
-      item.style.display = match ? '' : 'none';
-    });
-    document.querySelectorAll('.nav-folder').forEach(function (folder) {
-      if (!q) { folder.style.display = ''; return; }
-      var hasVisible = Array.from(folder.querySelectorAll('.nav-item'))
-        .some(function (i) { return i.style.display !== 'none'; });
-      folder.style.display = hasVisible ? '' : 'none';
-    });
-  };
+  // 確実なタイミングで初期化を実行
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 
-  window.toggleSidebar = function () {
-    document.getElementById('sidebar').classList.toggle('collapsed');
-    document.getElementById('content').classList.toggle('expanded');
-  };
-
-  window.toggleFolder = function (el) {
-    var children = el.nextElementSibling;
-    if (children) {
-      children.style.display = children.style.display === 'none' ? '' : 'none';
-    }
-    var arrow = el.querySelector('.folder-arrow');
-    if (arrow) arrow.classList.toggle('open');
-  };
+  // URLのハッシュ（#）が変わったときのイベント
+  window.addEventListener('hashchange', handleRouting);
 }());
 """
 
@@ -562,7 +588,7 @@ def generate_html(pages: list[dict], title: str = "My Vault") -> str:
         pages_html_parts.append(
             f'<div class="page" id="{slug}" data-title="{ptitle}">\n'
             f'<h1 class="page-title">{page["title"]}</h1>\n'
-            f'{page["html"]}\n'
+            f"{page['html']}\n"
             f"</div>"
         )
     pages_html = "\n".join(pages_html_parts)
